@@ -87,6 +87,8 @@
     textarea{padding-right:110px}
   }
   .pip .wrap{max-width:none}
+  @media (max-width:700px){ .extra{display:none} }
+  @media (max-height:460px){ .extra{display:none} }
 </style>
 </head>
 <body>
@@ -108,6 +110,9 @@
     <div class="bar">
       <button class="btn primary" id="copy">📋 Copy</button>
       <button class="btn" id="clear">Clear</button>
+      <button class="btn extra" id="export" title="Save learned words to a backup file">⬇ Export</button>
+      <button class="btn extra" id="import" title="Load learned words from a backup file">⬆ Import</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
       <span class="spacer"></span>
       <span class="count" id="count">0 characters</span>
     </div>
@@ -376,6 +381,47 @@ document.getElementById('clear').onclick=()=>{
   updateCount(); persist(); refresh();
 };
 refresh();
+
+// ---- backup: export / import learned words ----
+function flash(btn,msg,ok){
+  const old=btn.dataset.label||(btn.dataset.label=btn.textContent);
+  btn.textContent=msg; btn.classList.toggle('primary',!!ok); btn.classList.toggle('done',!!ok);
+  setTimeout(()=>{btn.textContent=old; btn.classList.remove('primary','done');},2200);
+}
+const countLearned=()=>Object.values(learned).reduce((n,m)=>n+Object.keys(m).length,0);
+document.getElementById('export').onclick=e=>{
+  const data={app:'pinyin-input',version:1,exported:new Date().toISOString(),learned,text:ta.value};
+  const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='pinyin-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  flash(e.currentTarget,'✓ '+countLearned()+' saved',true); ta.focus();
+};
+const fileIn=document.getElementById('importFile');
+document.getElementById('import').onclick=()=>fileIn.click();
+fileIn.onchange=async()=>{
+  const btn=document.getElementById('import'), f=fileIn.files[0]; fileIn.value='';
+  if(!f) return;
+  try{
+    const data=JSON.parse(await f.text());
+    const L=data.learned||data; let added=0;
+    if(typeof L!=='object'||Array.isArray(L)) throw 0;
+    for(const key in L){
+      if(!/^[a-z']+$/.test(key)||typeof L[key]!=='object') continue;
+      const m=learned[key]||(learned[key]={});
+      for(const w in L[key]){
+        const n=+L[key][w]; if(!(n>0)) continue;
+        if(!(w in m)) added++;
+        m[w]=Math.max(m[w]||0,n);
+      }
+    }
+    saveLearn();
+    if(typeof data.text==='string' && data.text && !ta.value.trim()){ ta.value=data.text; updateCount(); persist(); }
+    flash(btn,'✓ '+added+' new words',true); refresh();
+  }catch(err){ flash(btn,'Not a backup file',false); }
+  ta.focus();
+};
 
 // ---- pop-out always-on-top window (Chrome / Edge 116+) ----
 const pipBtn=document.getElementById('pip'), app=document.getElementById('app');
